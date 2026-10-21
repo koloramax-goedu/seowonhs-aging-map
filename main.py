@@ -11,8 +11,8 @@ st.set_page_config(
 )
 
 # 2. 데이터 URL
-POPULATION_URL = "https://raw.githubusercontent.com/first2022-cyber/contents//main/population_ts_yearly_gender.zip"
-GEOJSON_URL = "https://raw.githubusercontent.com/first2022-cyber/contents//main/sigungu_kr.geojson"
+POPULATION_URL = "https://raw.githubusercontent.com/first2022-cyber/contents/main/population_ts_yearly_gender.zip"
+GEOJSON_URL = "https://raw.githubusercontent.com/first2022-cyber/contents/main/sigungu_kr.geojson"
 
 # 3. 데이터 로딩 및 전처리 캐싱
 @st.cache_data
