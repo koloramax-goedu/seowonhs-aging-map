@@ -10,14 +10,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. 데이터 URL
-POPULATION_URL = "https://raw.githubusercontent.com/first2022-cyber/contents//main/population_ts_yearly_gender.zip"
-GEOJSON_URL = "https://raw.githubusercontent.com/first2022-cyber/contents//main/sigungu_kr.geojson"
+# 2. 데이터 URL (koloramax-goedu/seowonhs-data 리포지토리로 변경)
+POPULATION_URL = "https://raw.githubusercontent.com/koloramax-goedu/seowonhs-data/main/population_ts_yearly_gender.zip"
+GEOJSON_URL = "https://raw.githubusercontent.com/koloramax-goedu/seowonhs-data/main/sigungu_kr.geojson"
 
 # 3. 데이터 로딩 및 전처리 캐싱
 @st.cache_data
 def load_all_data():
-    # GeoJSON 시군구 경계 데이터 수신 (requests 이용)
+    # GeoJSON 시군구 경계 데이터 수신
     res = requests.get(GEOJSON_URL)
     geojson_data = res.json()
     
@@ -55,7 +55,7 @@ def load_all_data():
     # 연도 정제 (숫자 4자리 추출: 예 2015 ~ 2026)
     df['연도_int'] = df['연도'].astype(str).str.extract(r'(\d{4})')[0].astype(int)
     
-    # 나이별 열 분류 (전체, 고령, 유소년)
+    # 나이별 열 분류
     total_cols = [c for c in df.columns if c.startswith('계_')]
     
     def parse_age(col_name):
@@ -84,7 +84,7 @@ def load_all_data():
     
     return geojson_data, geo_df, grouped
 
-# 앱 헤더
+# 타이틀
 st.title("🗺️ 전국 인구구조 단계구분도 (2015 ~ 2026)")
 st.caption("연도별 읍·면·동 인구 데이터를 기반으로 시군구별 고령화율(65세 이상) 및 유소년 비율(0~14세) 변화를 확인하는 지도입니다.")
 
@@ -92,7 +92,7 @@ st.caption("연도별 읍·면·동 인구 데이터를 기반으로 시군구�
 with st.spinner("데이터를 불러오는 중입니다..."):
     geojson_data, geo_df, grouped_pop = load_all_data()
 
-# 컨트롤 패널 (상단 컨트롤 필터)
+# 컨트롤 패널 (상단 필터)
 ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([3, 3, 3])
 
 available_years = sorted(grouped_pop['연도_int'].unique())
@@ -132,154 +132,7 @@ merged['총인구'] = merged['총인구'].fillna(0).astype(int)
 merged['고령인구'] = merged['고령인구'].fillna(0).astype(int)
 merged['유소년인구'] = merged['유소년인구'].fillna(0).astype(int)
 
-# 지표별 구간 및 고정 색상 범주 설정
+# 지표별 구간 및 색상 설정
 if selected_metric == "고령화율 (65세 이상)":
     merged['비율'] = (merged['고령인구'] / merged['총인구'] * 100).round(2)
     metric_label = "고령화율"
-    bins = [-float('inf'), 19, 23, 28, 38, float('inf')]
-    bin_labels = ['19% 미만', '19% ~ 23% 미만', '23% ~ 28% 미만', '28% ~ 38% 미만', '38% 이상']
-    color_map = {
-        '19% 미만': '#fef0d9',
-        '19% ~ 23% 미만': '#fdcc8a',
-        '23% ~ 28% 미만': '#fc8d59',
-        '28% ~ 38% 미만': '#e34a33',
-        '38% 이상': '#b30000',
-        '데이터 없음': '#d3d3d3'
-    }
-else:
-    merged['비율'] = (merged['유소년인구'] / merged['총인구'] * 100).round(2)
-    metric_label = "유소년 비율"
-    bins = [-float('inf'), 8, 10, 12, 14, float('inf')]
-    bin_labels = ['8% 미만', '8% ~ 10% 미만', '10% ~ 12% 미만', '12% ~ 14% 미만', '14% 이상']
-    color_map = {
-        '8% 미만': '#f0f9e8',
-        '8% ~ 10% 미만': '#bae4bc',
-        '10% ~ 12% 미만': '#7bccc4',
-        '12% ~ 14% 미만': '#43a2ca',
-        '14% 이상': '#0868ac',
-        '데이터 없음': '#d3d3d3'
-    }
-
-# 총인구가 0이거나 데이터가 없는 지역 처리
-merged.loc[merged['총인구'] == 0, '비율'] = None
-
-# 색 구간 범주화 (pd.cut)
-merged['구간'] = pd.cut(merged['비율'], bins=bins, labels=bin_labels)
-merged['구간'] = merged['구간'].astype(str).fillna('데이터 없음')
-merged.loc[merged['구간'] == 'nan', '구간'] = '데이터 없음'
-
-# 시·도 선택 드롭다운
-with ctrl_col3:
-    sido_options = ["전국"] + sorted([s for s in merged['시도'].dropna().unique() if s])
-    selected_sido = st.selectbox("🔍 시·도 선택 (지도 확대)", sido_options)
-
-# 시·도 필터링
-if selected_sido != "전국":
-    display_df = merged[merged['시도'] == selected_sido].copy()
-else:
-    display_df = merged.copy()
-
-# 상단 지표 카드 세 장 (평균 비율, 가장 높은 시군구, 가장 낮은 시군구)
-valid_df = display_df[display_df['비율'].notna() & (display_df['총인구'] > 0)]
-
-st.divider()
-
-if not valid_df.empty:
-    total_pop_sum = valid_df['총인구'].sum()
-    if selected_metric == "고령화율 (65세 이상)":
-        overall_rate = (valid_df['고령인구'].sum() / total_pop_sum * 100) if total_pop_sum > 0 else 0
-    else:
-        overall_rate = (valid_df['유소년인구'].sum() / total_pop_sum * 100) if total_pop_sum > 0 else 0
-
-    max_row = valid_df.loc[valid_df['비율'].idxmax()]
-    min_row = valid_df.loc[valid_df['비율'].idxmin()]
-
-    c1, c2, c3 = st.columns(3)
-    sido_prefix = f"{selected_sido} " if selected_sido != "전국" else "전국 "
-    
-    c1.metric(
-        label=f"📌 {sido_prefix}평균 {metric_label}",
-        value=f"{overall_rate:.2f}%"
-    )
-    c2.metric(
-        label=f"🔺 가장 높은 시군구",
-        value=f"{max_row['비율']:.2f}%",
-        delta=f"{max_row['시도']} {max_row['시군구']}",
-        delta_color="off"
-    )
-    c3.metric(
-        label=f"🔻 가장 낮은 시군구",
-        value=f"{min_row['비율']:.2f}%",
-        delta=f"{min_row['시도']} {min_row['시군구']}",
-        delta_color="off"
-    )
-
-# 툴팁용 문자열 컬럼 생성
-display_df['비율_표시'] = display_df['비율'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "데이터 없음")
-
-# Plotly 단계구분도 생성
-fig = px.choropleth(
-    display_df,
-    geojson=geojson_data,
-    locations='코드',
-    featureidkey='properties.코드',
-    color='구간',
-    color_discrete_map=color_map,
-    category_orders={'구간': bin_labels + ['데이터 없음']},
-    custom_data=['시도', '시군구', '비율_표시', '총인구'],
-    labels={'구간': f'{metric_label} 구간'}
-)
-
-fig.update_geos(
-    fitbounds="locations",
-    visible=False
-)
-
-fig.update_traces(
-    marker_line_width=0.6,
-    marker_line_color="#444444",
-    hovertemplate=(
-        "<b>%{customdata[0]} %{customdata[1]}</b><br>"
-        f"{metric_label}: <b>%{{customdata[2]}}</b><br>"
-        "총인구: %{customdata[3]:,} 명<extra></extra>"
-    )
-)
-
-fig.update_layout(
-    height=680,
-    margin={"r": 0, "t": 10, "l": 0, "b": 10},
-    legend=dict(
-        title=dict(text=f"<b>{metric_label} 구간</b>"),
-        orientation="v",
-        yanchor="top",
-        y=0.98,
-        xanchor="left",
-        x=0.01,
-        bgcolor="rgba(255, 255, 255, 0.85)",
-        bordercolor="#cccccc",
-        borderwidth=1
-    )
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# 행정구역 미매칭 / 회색 처리 안내 문구
-unmatched_in_display = display_df[display_df['구간'] == '데이터 없음']
-if not unmatched_in_display.empty:
-    unmatched_names = sorted(unmatched_in_display['시군구'].dropna().unique())
-    unmatched_names_str = ", ".join(unmatched_names)
-    st.info(
-        f"ℹ️ **행정구역 경계 미매칭 지역 ({len(unmatched_names)}곳, 지도상 회색 표시):** "
-        f"{unmatched_names_str}\n\n"
-        f"*선택한 {selected_year}년 기준 인구 데이터가 없거나, 행정구역 개편 시점에 따라 경계 파일(GeoJSON)과 코드가 일치하지 않는 지역입니다.*"
-    )
-
-# 상세 데이터 보기
-with st.expander("📊 상세 데이터 보기"):
-    st.dataframe(
-        display_df[['코드', '시도', '시군구', '총인구', '고령인구', '유소년인구', '비율', '구간']]
-        .rename(columns={'비율': f'{metric_label}(%)'})
-        .sort_values(by=f'{metric_label}(%)', ascending=False)
-        .reset_index(drop=True),
-        use_container_width=True
-    )
